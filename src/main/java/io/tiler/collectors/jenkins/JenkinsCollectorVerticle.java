@@ -122,7 +122,7 @@ public class JenkinsCollectorVerticle extends Verticle {
 
     JsonArray newPoints = new JsonArray();
     JsonObject newMetric = new JsonObject()
-      .putString("name", "ci.jenkins.job_color")
+      .putString("name", config.metricNamePrefix() + ".job_color")
       .putArray("points", newPoints)
       .putNumber("timestamp", time);
 

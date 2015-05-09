@@ -13,14 +13,19 @@ public class ConfigFactory {
     return new Config(
       getCollectionIntervalInMilliseconds(config),
       getJobLimit(config),
-      getServers(config));
+      getServers(config),
+      getMetricNamePrefix(config));
+  }
+
+  private String getMetricNamePrefix(JsonObject config) {
+    return config.getString("metricNamePrefix", "jenkins");
   }
 
   private long getCollectionIntervalInMilliseconds(JsonObject config) {
     return config.getLong("collectionIntervalInMilliseconds", ONE_HOUR_IN_MILLISECONDS);
   }
 
-  private Integer getJobLimit(JsonObject config) {
+  private int getJobLimit(JsonObject config) {
     return config.getInteger("jobLimit", 10);
   }
 
@@ -63,7 +68,7 @@ public class ConfigFactory {
     return server.getBoolean("ssl", false);
   }
 
-  private Integer getServerPort(JsonObject server) {
+  private int getServerPort(JsonObject server) {
     return server.getInteger("port", 8080);
   }
 

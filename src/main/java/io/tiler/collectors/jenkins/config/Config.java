@@ -4,24 +4,30 @@ import java.util.List;
 
 public class Config {
   private final long collectionIntervalInMilliseconds;
-  private final Integer jobLimit;
+  private final int jobLimit;
   private final List<Server> servers;
+  private final String metricNamePrefix;
 
-  public Config(long collectionIntervalInMilliseconds, Integer jobLimit, List<Server> servers) {
+  public Config(long collectionIntervalInMilliseconds, int jobLimit, List<Server> servers, String metricNamePrefix) {
     this.collectionIntervalInMilliseconds = collectionIntervalInMilliseconds;
     this.jobLimit = jobLimit;
     this.servers = servers;
+    this.metricNamePrefix = metricNamePrefix;
   }
 
   public long collectionIntervalInMilliseconds() {
     return collectionIntervalInMilliseconds;
   }
 
-  public Integer jobLimit() {
+  public int jobLimit() {
     return jobLimit;
   }
 
   public List<Server> servers() {
     return servers;
+  }
+
+  public String metricNamePrefix() {
+    return metricNamePrefix;
   }
 }
