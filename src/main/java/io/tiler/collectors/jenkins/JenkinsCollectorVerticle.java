@@ -1,5 +1,8 @@
 package io.tiler.collectors.jenkins;
 
+import io.tiler.collectors.jenkins.config.Config;
+import io.tiler.collectors.jenkins.config.ConfigFactory;
+import io.tiler.collectors.jenkins.config.Server;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.eventbus.EventBus;
 import org.vertx.java.core.http.HttpClient;
@@ -9,26 +12,19 @@ import org.vertx.java.core.logging.Logger;
 import org.vertx.java.platform.Verticle;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class JenkinsCollectorVerticle extends Verticle {
   private Logger logger;
-  private JsonObject config;
+  private Config config;
   private EventBus eventBus;
-  private HttpClient httpClient;
+  private List<HttpClient> httpClients;
 
   public void start() {
     logger = container.logger();
-    config = container.config();
+    config = new ConfigFactory().load(container.config());
     eventBus = vertx.eventBus();
-    httpClient = vertx.createHttpClient()
-      .setHost(getJenkinsHost())
-      .setPort(getJenkinsPort())
-      .setSSL(getJenkinsSsl())
-      .setTryUseCompression(true);
-    // Get the following error without turning keep alive off.  Looks like a vertx bug
-    // SEVERE: Exception in Java verticle
-    // java.nio.channels.ClosedChannelException
-    httpClient.setKeepAlive(false);
+    httpClients = createHttpClients();
 
     final boolean[] isRunning = {true};
 
@@ -36,7 +32,7 @@ public class JenkinsCollectorVerticle extends Verticle {
       isRunning[0] = false;
     });
 
-    vertx.setPeriodic(3600000, aLong -> {
+    vertx.setPeriodic(config.collectionIntervalInMilliseconds(), aLong -> {
       if (isRunning[0]) {
         logger.info("Collection aborted as previous run still executing");
         return;
@@ -52,26 +48,28 @@ public class JenkinsCollectorVerticle extends Verticle {
     logger.info("JenkinsCollectorVerticle started");
   }
 
-  private boolean getJenkinsSsl() {
-    return config.getBoolean("ssl", false);
-  }
-
-  private Integer getJenkinsPort() {
-    return config.getInteger("port", 8080);
-  }
-
-  private String getJenkinsHost() {
-    return config.getString("host", "localhost");
-  }
-
-  private Integer getJobLimit() {
-    return config.getInteger("jobLimit", 10);
+  private List<HttpClient> createHttpClients() {
+    return config.servers()
+      .stream()
+      .map(server -> {
+        HttpClient httpClient = vertx.createHttpClient()
+          .setHost(server.host())
+          .setPort(server.port())
+          .setSSL(server.ssl())
+          .setTryUseCompression(true);
+        // Get the following error without turning keep alive off.  Looks like a vertx bug
+        // SEVERE: Exception in Java verticle
+        // java.nio.channels.ClosedChannelException
+        httpClient.setKeepAlive(false);
+        return httpClient;
+      })
+      .collect(Collectors.toList());
   }
 
   private void collect(Handler<Void> handler) {
     logger.info("Collection started");
-    getJobs(getJobLimit(), projects -> {
-      transformMetrics(projects, metrics -> {
+    getJobs(config.jobLimit(), instances -> {
+      transformMetrics(instances, metrics -> {
         publishNewMetrics(metrics, aVoid -> {
           logger.info("Collection finished");
           handler.handle(null);
@@ -81,7 +79,15 @@ public class JenkinsCollectorVerticle extends Verticle {
   }
 
   private void getJobs(int jobLimit, Handler<JsonArray> handler) {
-    httpClient.getNow("/api/json?pretty=true", response -> {
+    getJobs(jobLimit, 0, new JsonArray(), handler);
+  }
+
+  private void getJobs(int jobLimit, int serverIndex, JsonArray servers, Handler<JsonArray> handler) {
+    if (serverIndex >= config.servers().size()) {
+      handler.handle(servers);
+    }
+
+    httpClients.get(serverIndex).getNow("/api/json?pretty=true", response -> {
       response.bodyHandler(body -> {
         logger.info("Received jobs " + body);
         JsonArray jobs = new JsonObject(body.toString()).getArray("jobs");
@@ -94,23 +100,23 @@ public class JenkinsCollectorVerticle extends Verticle {
         logger.info("Received " + jobs.size() + " jobs");
         logger.info("Jobs limit set to " + jobLimit);
 
-        List jobList = jobs.toList();
-        int jobCount = jobList.size();
-
-        while (jobCount > jobLimit) {
-          jobCount--;
-          jobList.remove(jobCount);
-        }
-
+        List jobList = jobs.toList().subList(0, Math.min(jobs.size(), jobLimit));
         jobs = new JsonArray(jobList);
         logger.info("There are " + jobs.size() + " jobs after limiting");
 
-        handler.handle(jobs);
+        Server serverConfig = config.servers().get(serverIndex);
+
+        JsonObject server = new JsonObject();
+        server.putString("name", serverConfig.name());
+        server.putArray("jobs", jobs);
+
+        servers.addObject(server);
+        getJobs(jobLimit, serverIndex + 1, servers, handler);
       });
     });
   }
 
-  private void transformMetrics(JsonArray jobs, Handler<JsonArray> handler) {
+  private void transformMetrics(JsonArray servers, Handler<JsonArray> handler) {
     logger.info("Transforming metrics");
     long time = getCurrentTimestampInMicroseconds();
 
@@ -120,16 +126,19 @@ public class JenkinsCollectorVerticle extends Verticle {
       .putArray("points", newPoints)
       .putNumber("timestamp", time);
 
-    for (int jobIndex = 0, jobCount = jobs.size(); jobIndex < jobCount; jobIndex++) {
-      JsonObject job = jobs.get(jobIndex);
-      String jobName = job.getString("name");
-      String jobColor = job.getString("color");
+    servers.forEach(serverObject -> {
+      JsonObject server = (JsonObject) serverObject;
+      String serverName = server.getString("name");
 
-      newPoints.addObject(new JsonObject()
-        .putNumber("time", time)
-        .putString("jobName", jobName)
-        .putString("value", jobColor));
-    }
+      server.getArray("jobs").forEach(jobObject -> {
+        JsonObject job = (JsonObject) jobObject;
+        newPoints.addObject(new JsonObject()
+          .putNumber("time", time)
+          .putString("serverName", serverName)
+          .putString("jobName", job.getString("name"))
+          .putString("value", job.getString("color")));
+      });
+    });
 
     JsonArray newMetrics = new JsonArray();
     newMetrics.addObject(newMetric);
