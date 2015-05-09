@@ -1,6 +1,5 @@
 package io.tiler.collectors.jenkins;
 
-import org.joda.time.DateTime;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.eventbus.EventBus;
 import org.vertx.java.core.http.HttpClient;
@@ -113,7 +112,7 @@ public class JenkinsCollectorVerticle extends Verticle {
 
   private void transformMetrics(JsonArray jobs, Handler<JsonArray> handler) {
     logger.info("Transforming metrics");
-    long time = getCurrentMillisTimestamp();
+    long time = getCurrentTimestampInMicroseconds();
 
     JsonArray newPoints = new JsonArray();
     JsonObject newMetric = new JsonObject()
@@ -138,8 +137,8 @@ public class JenkinsCollectorVerticle extends Verticle {
     handler.handle(newMetrics);
   }
 
-  private long getCurrentMillisTimestamp() {
-    return DateTime.now().getMillis();
+  private long getCurrentTimestampInMicroseconds() {
+    return System.currentTimeMillis() * 1000;
   }
 
   private void publishNewMetrics(JsonArray metrics, Handler<Void> handler) {
