@@ -12,21 +12,12 @@ public class ConfigFactory {
   public Config load(JsonObject config) {
     return new Config(
       getCollectionIntervalInMilliseconds(config),
-      getJobLimit(config),
       getServers(config),
       getMetricNamePrefix(config));
   }
 
-  private String getMetricNamePrefix(JsonObject config) {
-    return config.getString("metricNamePrefix", "jenkins");
-  }
-
   private long getCollectionIntervalInMilliseconds(JsonObject config) {
     return config.getLong("collectionIntervalInMilliseconds", ONE_HOUR_IN_MILLISECONDS);
-  }
-
-  private int getJobLimit(JsonObject config) {
-    return config.getInteger("jobLimit", 10);
   }
 
   private List<Server> getServers(JsonObject config) {
@@ -46,18 +37,13 @@ public class ConfigFactory {
   }
 
   private Server getServer(JsonObject server) {
-    String serverName = getServerName(server);
-    String serverHost = getServerHost(server);
-
-    if (serverName == null) {
-      serverName = serverHost;
-    }
-
     return new Server(
-      serverName,
-      serverHost,
+      getServerName(server),
+      getServerHost(server),
       getServerPort(server),
-      getServerSsl(server));
+      getServerPath(server),
+      getServerSsl(server),
+      getServerJobLimit(server));
   }
 
   private String getServerName(JsonObject server) {
@@ -72,7 +58,19 @@ public class ConfigFactory {
     return server.getInteger("port", 8080);
   }
 
+  private String getServerPath(JsonObject server) {
+    return server.getString("path", "");
+  }
+
   private String getServerHost(JsonObject server) {
     return server.getString("host", "localhost");
+  }
+
+  private int getServerJobLimit(JsonObject server) {
+    return server.getInteger("jobLimit", 10);
+  }
+
+  private String getMetricNamePrefix(JsonObject config) {
+    return config.getString("metricNamePrefix", "jenkins");
   }
 }

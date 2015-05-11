@@ -68,7 +68,7 @@ public class JenkinsCollectorVerticle extends Verticle {
 
   private void collect(Handler<Void> handler) {
     logger.info("Collection started");
-    getJobs(config.jobLimit(), instances -> {
+    getJobs(instances -> {
       transformMetrics(instances, metrics -> {
         publishNewMetrics(metrics, aVoid -> {
           logger.info("Collection finished");
@@ -78,18 +78,20 @@ public class JenkinsCollectorVerticle extends Verticle {
     });
   }
 
-  private void getJobs(int jobLimit, Handler<JsonArray> handler) {
-    getJobs(jobLimit, 0, new JsonArray(), handler);
+  private void getJobs(Handler<JsonArray> handler) {
+    getJobs(0, new JsonArray(), handler);
   }
 
-  private void getJobs(int jobLimit, int serverIndex, JsonArray servers, Handler<JsonArray> handler) {
+  private void getJobs(int serverIndex, JsonArray servers, Handler<JsonArray> handler) {
     if (serverIndex >= config.servers().size()) {
       handler.handle(servers);
+      return;
     }
 
-    httpClients.get(serverIndex).getNow("/api/json?pretty=true", response -> {
+    Server serverConfig = config.servers().get(serverIndex);
+
+    httpClients.get(serverIndex).getNow(serverConfig.path() + "/api/json?pretty=true", response -> {
       response.bodyHandler(body -> {
-        logger.info("Received jobs " + body);
         JsonArray jobs = new JsonObject(body.toString()).getArray("jobs");
 
         if (jobs == null) {
@@ -98,20 +100,17 @@ public class JenkinsCollectorVerticle extends Verticle {
         }
 
         logger.info("Received " + jobs.size() + " jobs");
+        int jobLimit = serverConfig.jobLimit();
         logger.info("Jobs limit set to " + jobLimit);
-
-        List jobList = jobs.toList().subList(0, Math.min(jobs.size(), jobLimit));
-        jobs = new JsonArray(jobList);
+        jobs = new JsonArray(jobs.toList().subList(0, Math.min(jobs.size(), jobLimit)));
         logger.info("There are " + jobs.size() + " jobs after limiting");
-
-        Server serverConfig = config.servers().get(serverIndex);
 
         JsonObject server = new JsonObject();
         server.putString("name", serverConfig.name());
         server.putArray("jobs", jobs);
 
         servers.addObject(server);
-        getJobs(jobLimit, serverIndex + 1, servers, handler);
+        getJobs(serverIndex + 1, servers, handler);
       });
     });
   }
@@ -152,7 +151,6 @@ public class JenkinsCollectorVerticle extends Verticle {
 
   private void publishNewMetrics(JsonArray metrics, Handler<Void> handler) {
     logger.info("Publishing metrics to event bus");
-    logger.info("New metrics " + metrics);
     JsonObject message = new JsonObject()
       .putArray("metrics", metrics);
     eventBus.publish("io.squarely.vertxspike.metrics", message);
