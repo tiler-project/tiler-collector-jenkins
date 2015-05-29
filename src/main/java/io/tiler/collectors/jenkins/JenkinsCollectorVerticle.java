@@ -1,5 +1,6 @@
 package io.tiler.collectors.jenkins;
 
+import io.tiler.BaseCollectorVerticle;
 import io.tiler.collectors.jenkins.config.Config;
 import io.tiler.collectors.jenkins.config.ConfigFactory;
 import io.tiler.collectors.jenkins.config.Server;
@@ -9,12 +10,11 @@ import org.vertx.java.core.http.HttpClient;
 import org.vertx.java.core.json.JsonArray;
 import org.vertx.java.core.json.JsonObject;
 import org.vertx.java.core.logging.Logger;
-import org.vertx.java.platform.Verticle;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class JenkinsCollectorVerticle extends Verticle {
+public class JenkinsCollectorVerticle extends BaseCollectorVerticle {
   private Logger logger;
   private Config config;
   private EventBus eventBus;
@@ -70,10 +70,9 @@ public class JenkinsCollectorVerticle extends Verticle {
     logger.info("Collection started");
     getJobs(instances -> {
       transformMetrics(instances, metrics -> {
-        publishNewMetrics(metrics, aVoid -> {
-          logger.info("Collection finished");
-          handler.handle(null);
-        });
+        saveMetrics(metrics);
+        logger.info("Collection finished");
+        handler.handle(null);
       });
     });
   }
@@ -117,11 +116,11 @@ public class JenkinsCollectorVerticle extends Verticle {
 
   private void transformMetrics(JsonArray servers, Handler<JsonArray> handler) {
     logger.info("Transforming metrics");
-    long time = getCurrentTimestampInMicroseconds();
+    long time = currentTimeInMicroseconds();
 
     JsonArray newPoints = new JsonArray();
     JsonObject newMetric = new JsonObject()
-      .putString("name", config.metricNamePrefix() + ".job_color")
+      .putString("name", config.metricNamePrefix() + "job-color")
       .putArray("points", newPoints)
       .putNumber("timestamp", time);
 
@@ -143,17 +142,5 @@ public class JenkinsCollectorVerticle extends Verticle {
     newMetrics.addObject(newMetric);
 
     handler.handle(newMetrics);
-  }
-
-  private long getCurrentTimestampInMicroseconds() {
-    return System.currentTimeMillis() * 1000;
-  }
-
-  private void publishNewMetrics(JsonArray metrics, Handler<Void> handler) {
-    logger.info("Publishing metrics to event bus");
-    JsonObject message = new JsonObject()
-      .putArray("metrics", metrics);
-    eventBus.publish("io.squarely.vertxspike.metrics", message);
-    handler.handle(null);
   }
 }

@@ -1,5 +1,6 @@
 package io.tiler.collectors.jenkins.config;
 
+import io.tiler.time.TimePeriodParser;
 import org.vertx.java.core.json.JsonArray;
 import org.vertx.java.core.json.JsonObject;
 
@@ -7,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ConfigFactory {
-  private static final long ONE_HOUR_IN_MILLISECONDS = 60 * 60 * 1000l;
+  private final TimePeriodParser timePeriodParser = new TimePeriodParser();
 
   public Config load(JsonObject config) {
     return new Config(
@@ -17,7 +18,7 @@ public class ConfigFactory {
   }
 
   private long getCollectionIntervalInMilliseconds(JsonObject config) {
-    return config.getLong("collectionIntervalInMilliseconds", ONE_HOUR_IN_MILLISECONDS);
+    return timePeriodParser.parseTimePeriodToMilliseconds(config.getString("collectionIntervalInMilliseconds", "1h"));
   }
 
   private List<Server> getServers(JsonObject config) {
